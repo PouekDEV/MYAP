@@ -1,0 +1,8 @@
+enable_rich_presence = true
+show_console = false
+# Number in days
+delete_files_after = 10
+# Available are "system", "light" and "dark"
+appearance = "system"
+# Avaialble are "green", "blue" and "dark-blue"
+theme = "green"
