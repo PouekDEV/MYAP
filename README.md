@@ -4,7 +4,6 @@
 ![badge_downloads](https://img.shields.io/github/downloads/PouekDEV/MYAP/total?style=for-the-badge)
 ![badge_last_commit](https://img.shields.io/github/last-commit/PouekDEV/MYAP?style=for-the-badge)
 ![badge_license](https://img.shields.io/github/license/PouekDEV/MYAP?style=for-the-badge)
-![badge_tests](https://img.shields.io/appveyor/tests/PouekDEV/MYAP?style=for-the-badge)
 [![pypresence](https://img.shields.io/badge/using-pypresence-00bb88.svg?style=for-the-badge&logo=discord&logoWidth=20)](https://github.com/qwertyquerty/pypresence)
 
 A Minimalistic Youtube Audio Player (MYAP)
