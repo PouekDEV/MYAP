@@ -1,7 +1,7 @@
 # MYAP - Minimalistic Youtube Audio Player
 # Supports not only youtube
+#TODO: The thing with the playlists and bad files y'know
 import yt_dlp
-import shutil
 import os
 import pygame
 import customtkinter
@@ -22,14 +22,18 @@ music_pos_seconds = 0
 paused = False
 inprogress = False
 repeat_track = False
+run_presence = False
 format = "mp3"
-title = " "
+title = "Nothing"
+cover_link = "https://user-images.githubusercontent.com/64737924/210854929-b4f80382-71a6-4b03-9d41-c88b31b75bb3.png"
 playlist_queue = []
 queue_pos = 0
-is_rich_presence = tomli.loads(Path("config.toml").read_text(encoding="utf-8"))["enable_rich_presence"]
-files_stale_after = tomli.loads(Path("config.toml").read_text(encoding="utf-8"))["delete_files_after"]
+whole_config = tomli.loads(Path("config.toml").read_text(encoding="utf-8"))
+is_rich_presence = whole_config["enable_rich_presence"]
+files_stale_after = whole_config["delete_files_after"]
 all_files = tomli.loads(Path("files.toml").read_text(encoding="utf-8"))["files"]
-hide_console = tomli.loads(Path("config.toml").read_text(encoding="utf-8"))["show_console"]
+hide_console = whole_config["show_console"]
+audio_loudness = whole_config["audio_loudness"]
 
 if not hide_console:
     the_program_to_hide = win32gui.GetForegroundWindow()
@@ -37,16 +41,14 @@ if not hide_console:
 
 def presence_loop():
     global title
-    while True:
-        if title != " ":
-            RPC.update(details="Listening to", state=title)
-        else:
-            RPC.update(details="Listening to", state="Nothing")
+    while run_presence:
+        RPC.update(details="Listening to", state=title, large_image=cover_link)
         sleep(15)
 
 if is_rich_presence:
     RPC = Presence("1060563956806205491",pipe=0)
     RPC.connect()
+    run_presence = True
     p_l = Thread(target=presence_loop)
     p_l.start()
 
@@ -86,6 +88,7 @@ def check_music():
     global title
     global playlist_queue
     global queue_pos
+    global cover_link
     for event in pygame.event.get():
         if event.type == MUSIC_END:
             print("[MYAP] Playback stopped")
@@ -127,7 +130,8 @@ def check_music():
                     time_into.configure(text=get_formated_time(0))
                     slider.configure(from_=0, to=1, number_of_steps=1)
                     play_button.configure(text=">")
-                    title = " "
+                    title = "Nothing"
+                    cover_link = "https://user-images.githubusercontent.com/64737924/210854929-b4f80382-71a6-4b03-9d41-c88b31b75bb3.png"
     root.after(100,check_music)
 
 def slider_seek(value):
@@ -137,6 +141,11 @@ def slider_seek(value):
         music_pos_seconds = value
         time_into.configure(text=get_formated_time(music_pos_seconds))
         slider.set(value)
+
+def slider_volume(value):
+    global audio_loudness
+    pygame.mixer.music.set_volume(value)
+    audio_loudness = value
 
 def p_updater():
     global inprogress
@@ -165,6 +174,8 @@ def pre_play(link):
     global all_files
     global playlist_queue
     global queue_pos
+    global cover_link
+    fnfe = False
     ydl_opts = {
         'format': 'm4a/bestaudio/best',
         'ignoreerrors': True,
@@ -186,34 +197,52 @@ def pre_play(link):
                 print("[MYAP] Skipping")
         except ValueError:
             print("[MYAP] Provided string is not a valid url")
+        except AttributeError:
+            print("[MYAP] Dialog window has been closed")
         else:
             try:
                 input.index("playlist?")
             except ValueError:
                 root.title("Fetching audio - MYAP")
-                title = ""
                 video_id = ""
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(input, download=False)
                     title = ydl.sanitize_info(info)["title"]
                     video_id = ydl.sanitize_info(info)["id"]
+                    cover_link = "https://i.ytimg.com/vi/"+video_id+"/hq720.jpg"
                     if not os.path.exists("downloaded/"+title+" ["+ video_id +"]."+format):
                         root.title("Downloading: " + title + " - MYAP")
                         error_code = ydl.download(input)
-                        shutil.move(title+" ["+ video_id +"]."+format,"downloaded/"+title+" ["+ video_id +"]."+format)
-                        all_files.append(title+" ["+ video_id +"]."+format)
-                        with open("files.toml", mode="wb") as fp:
-                            print(str(dict(files = all_files)))
-                            tomli_w.dump(dict(files = all_files), fp)
+                        try:
+                            os.replace(title+" ["+ video_id +"]."+format,"downloaded/"+title+" ["+ video_id +"]."+format)
+                        except FileNotFoundError:
+                            fnfe = True
+                            for file in os.listdir("./"):
+                                if file.endswith(".mp3"):
+                                    os.remove(file)
+                            print("[MYAP] There was an error with " + title + ". File probably has some unsual signs")
+                            title = "Nothing"
+                            cover_link = "https://user-images.githubusercontent.com/64737924/210854929-b4f80382-71a6-4b03-9d41-c88b31b75bb3.png"
+                            root.title("Playing: Nothing - MYAP")
+                            if len(playlist_queue) > 0:
+                                queue_pos += 1
+                                m_p = Thread(target=pre_play,args=(playlist_queue[queue_pos],))
+                                m_p.start()
+                        else:
+                            all_files.append(title+" ["+ video_id +"]."+format)
+                            with open("files.toml", mode="wb") as fp:
+                                print(str(dict(files = all_files)))
+                                tomli_w.dump(dict(files = all_files), fp)
                     else:
                         print("[MYAP] File exists")
-                mf = MP3("downloaded/"+title+" ["+ video_id +"]."+format)
-                slider.configure(from_=0,to=mf.info.length,number_of_steps=mf.info.length*10)
-                play_button.configure(text="||")
-                time_total.configure(text=get_formated_time(mf.info.length))
-                p_a = Thread(target=play)
-                p_a.start()
-                print("[MYAP] Done processing url & audio file(s)")
+                if not fnfe:
+                    mf = MP3("downloaded/"+title+" ["+ video_id +"]."+format)
+                    slider.configure(from_=0,to=mf.info.length,number_of_steps=mf.info.length*10)
+                    play_button.configure(text="||")
+                    time_total.configure(text=get_formated_time(mf.info.length))
+                    p_a = Thread(target=play)
+                    p_a.start()
+                    print("[MYAP] Done processing url & audio file(s)")
             else:
                 root.title("Downloading playlist data - MYAP")
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -238,6 +267,7 @@ def stop_p():
     global title
     global playlist_queue
     global queue_pos
+    global cover_link
     if repeat_track:
         set_repeat()
     if len(playlist_queue) > 0:
@@ -245,7 +275,8 @@ def stop_p():
         queue_pos = 0
     paused = False
     inprogress = False
-    title = " "
+    title = "Nothing"
+    cover_link = "https://user-images.githubusercontent.com/64737924/210854929-b4f80382-71a6-4b03-9d41-c88b31b75bb3.png"
     music_pos_seconds = 0
     pygame.mixer.music.stop()
 
@@ -279,33 +310,49 @@ def play_b():
 pygame.init()
 MUSIC_END = pygame.USEREVENT+1
 pygame.mixer.music.set_endevent(MUSIC_END)
-customtkinter.set_default_color_theme(tomli.loads(Path("config.toml").read_text(encoding="utf-8"))["theme"])
-customtkinter.set_appearance_mode(tomli.loads(Path("config.toml").read_text(encoding="utf-8"))["appearance"]) 
+customtkinter.set_default_color_theme(whole_config["theme"])
+customtkinter.set_appearance_mode(whole_config["appearance"]) 
 root = customtkinter.CTk()
 root.geometry("500x100")
 root.title("Playing: Nothing - MYAP")
+# Buttons
 play_button = customtkinter.CTkButton(master=root,text=">",font=("Courier", 44),command=play_b, width=60,height=60)
 play_button.place(relx=0.07,rely=0.5,anchor=CENTER)
 stop_button = customtkinter.CTkButton(master=root,text="□",font=("Courier", 44),command=stop_p, width=60,height=60)
 stop_button.place(relx=0.2,rely=0.5,anchor=CENTER)
 repeat_button = customtkinter.CTkButton(master=root,text="→",font=("Courier", 44),command=set_repeat, width=60,height=60)
 repeat_button.place(relx=0.33,rely=0.5,anchor=CENTER)
+# Time labels and progress slider
 time_into = customtkinter.CTkLabel(master=root, text="0:00")
-time_into.place(relx=0.45,rely=0.5,anchor=CENTER)
+time_into.place(relx=0.45,rely=0.35,anchor=CENTER)
 time_total = customtkinter.CTkLabel(master=root, text="0:00")
-time_total.place(relx=0.94,rely=0.5,anchor=CENTER)
+time_total.place(relx=0.94,rely=0.35,anchor=CENTER)
 slider = customtkinter.CTkSlider(master=root,from_=0, to=1, number_of_steps=1, command=slider_seek)
-slider.place(relx=0.7,rely=0.5,anchor=CENTER)
+slider.place(relx=0.7,rely=0.35,anchor=CENTER)
 slider.set(0)
+# Audio
+speaker_emoji = customtkinter.CTkLabel(master=root, text="🔊",font=("Courier", 20))
+speaker_emoji.place(relx=0.45,rely=0.6,anchor=CENTER)
+slider_v = customtkinter.CTkSlider(master=root,from_=0, to=1, number_of_steps=1000, command=slider_volume)
+slider_v.place(relx=0.7,rely=0.6,anchor=CENTER)
+slider_v.set(audio_loudness)
+pygame.mixer.music.set_volume(audio_loudness)
 check_music()
 
 def close_program():
+    global run_presence
+    global whole_config
+    whole_config["audio_loudness"] = audio_loudness
+    with open("config.toml", mode="wb") as fp:
+        tomli_w.dump(whole_config, fp)
     print("[MYAP] Quitting")
     pygame.mixer.music.stop()
     pygame.mixer.music.unload()
     pygame.quit()
     if is_rich_presence:
+        RPC.clear()
         RPC.close()
+        run_presence = False
     root.destroy()
 
 root.protocol("WM_DELETE_WINDOW", close_program)
