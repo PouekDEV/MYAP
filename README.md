@@ -15,7 +15,22 @@ MYAP for now only supports Windows
 - Download MYAP latest release from here https://github.com/PouekDEV/MYAP/releases
 - Extract MYAP into a folder
 
+# Screenshots
+The App itself
+
+![image](https://user-images.githubusercontent.com/64737924/211200492-55e93000-7a1b-4fa4-b855-1a1f135fd07b.png)
+
+Discord Rich Presence
+
+![image](https://user-images.githubusercontent.com/64737924/211200502-1994d550-de84-492c-8a35-120757ec90e9.png)
+
+(If you don't like having your music displayed on Discord as your status change line "enable_rich_presence" in config.toml to "false")
+```
+enable_rich_presence = false
+```
+
+
 # Back story
-I created this app just because one song that I really like is only available on YouTube and imo web browsers are too heavy for just playing audio from YouTube and I didn't need video. And this is how MYAP was created.
+I created this app just because one song that I really like is only available on YouTube and imo web browsers are too heavy for just playing audio from YouTube and I didn't need video.
 
 You are welcome to contribute if you want.
