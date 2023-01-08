@@ -220,7 +220,7 @@ def pre_play(link):
                             for file in os.listdir("./"):
                                 if file.endswith(".mp3"):
                                     os.remove(file)
-                            print("[MYAP] There was an error with " + title + ". File probably has some unsual signs")
+                            print("[MYAP] There was an error with " + title + ". File probably has some unusual signs")
                             title = "Nothing"
                             cover_link = "https://user-images.githubusercontent.com/64737924/210854929-b4f80382-71a6-4b03-9d41-c88b31b75bb3.png"
                             root.title("Playing: Nothing - MYAP")
