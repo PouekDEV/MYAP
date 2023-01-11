@@ -42,7 +42,7 @@ if not hide_console:
 def presence_loop():
     global title
     while run_presence:
-        RPC.update(details="Listening to", state=title, large_image=cover_link)
+        RPC.update(details="Listening to", state=title, large_image=cover_link, large_text=title)
         sleep(15)
 
 if is_rich_presence:
@@ -54,6 +54,7 @@ if is_rich_presence:
 
 print("[MYAP] "+str(all_files))
 
+files_to_remove = []
 for file in range(len(all_files)):
     last_access_time = os.path.getatime("downloaded/"+all_files[file])
     today = time.localtime()
@@ -66,9 +67,12 @@ for file in range(len(all_files)):
     print("[MYAP] "+str(today))
     difference = (today-last_access_time).days
     print("[MYAP] Difference " + str(difference))
-    if difference > files_stale_after:
+    if difference >= files_stale_after:
         os.remove("downloaded/"+all_files[file])
-        all_files.remove(file)
+        files_to_remove.append(all_files[file])
+for file in range(len(files_to_remove)):
+    all_files.remove(all_files[file-file])
+files_to_remove = []
 with open("files.toml", mode="wb") as fp:
     print("[MYAP] "+str(dict(files = all_files)))
     tomli_w.dump(dict(files = all_files), fp)
@@ -175,14 +179,14 @@ def pre_play(link):
     global playlist_queue
     global queue_pos
     global cover_link
-    fnfe = False
     ydl_opts = {
         'format': 'm4a/bestaudio/best',
         'ignoreerrors': True,
+        'extract_flat': True,
         'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': format,
-            }]
+        }]
     }
     if link == " ":
         dialog = customtkinter.CTkInputDialog(text="Paste in url", title="MYAP")
@@ -215,19 +219,21 @@ def pre_play(link):
                         error_code = ydl.download(input)
                         try:
                             os.replace(title+" ["+ video_id +"]."+format,"downloaded/"+title+" ["+ video_id +"]."+format)
+                        # Make replaceses for illegal characters for files
+                        # < (less than)
+                        # > (greater than)
+                        # : (colon - sometimes works, but is actually NTFS Alternate Data Streams)
+                        # " (double quote)
+                        # / (forward slash)
+                        # \ (backslash)
+                        # | (vertical bar or pipe)
+                        # ? (question mark)
+                        # * (asterisk)
                         except FileNotFoundError:
-                            fnfe = True
                             for file in os.listdir("./"):
                                 if file.endswith(".mp3"):
-                                    os.remove(file)
-                            print("[MYAP] There was an error with " + title + ". File probably has some unusual signs")
-                            title = "Nothing"
-                            cover_link = "https://user-images.githubusercontent.com/64737924/210854929-b4f80382-71a6-4b03-9d41-c88b31b75bb3.png"
-                            root.title("Playing: Nothing - MYAP")
-                            if len(playlist_queue) > 0:
-                                queue_pos += 1
-                                m_p = Thread(target=pre_play,args=(playlist_queue[queue_pos],))
-                                m_p.start()
+                                    os.rename(file,title.replace(":","").replace("|","")+" ["+ video_id +"]."+format)
+                                    os.replace(title+" ["+ video_id +"]."+format,"downloaded/"+title+" ["+ video_id +"]."+format)
                         else:
                             all_files.append(title+" ["+ video_id +"]."+format)
                             with open("files.toml", mode="wb") as fp:
@@ -235,25 +241,29 @@ def pre_play(link):
                                 tomli_w.dump(dict(files = all_files), fp)
                     else:
                         print("[MYAP] File exists")
-                if not fnfe:
-                    mf = MP3("downloaded/"+title+" ["+ video_id +"]."+format)
-                    slider.configure(from_=0,to=mf.info.length,number_of_steps=mf.info.length*10)
-                    play_button.configure(text="||")
-                    time_total.configure(text=get_formated_time(mf.info.length))
-                    p_a = Thread(target=play)
-                    p_a.start()
-                    print("[MYAP] Done processing url & audio file(s)")
+                mf = MP3("downloaded/"+title+" ["+ video_id +"]."+format)
+                slider.configure(from_=0,to=mf.info.length,number_of_steps=mf.info.length*10)
+                play_button.configure(text="||")
+                time_total.configure(text=get_formated_time(mf.info.length))
+                p_a = Thread(target=play)
+                p_a.start()
+                print("[MYAP] Done processing url & audio file(s)")
             else:
+                ydl_opts = {
+                    'ignoreerrors': True,
+                    'extract_flat': True,
+                    'skip_download': True,
+                }
                 root.title("Downloading playlist data - MYAP")
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(input, download=False)
-                    for i in range(len(ydl.sanitize_info(info)["entries"])):
-                        try:
-                            print("[MYAP] Adding this id to playlist: "+str(ydl.sanitize_info(info)["entries"][i]["id"]))
-                        except TypeError:
-                            print("[MYAP] TypeError. Probably this video is private")
-                        else:
-                            playlist_queue.append(str(ydl.sanitize_info(info)["entries"][i]["id"]))
+                for i in range(len(ydl.sanitize_info(info)["entries"])):
+                    try:
+                        print("[MYAP] Adding this id to playlist: "+str(ydl.sanitize_info(info)["entries"][i]["id"]))
+                    except TypeError:
+                        print("[MYAP] TypeError. Probably this video is private")
+                    else:
+                        playlist_queue.append(str(ydl.sanitize_info(info)["entries"][i]["id"]))
                 print("[MYAP] Playlist queue: "+str(playlist_queue))
                 m_p = Thread(target=pre_play,args=(playlist_queue[queue_pos],))
                 m_p.start()
