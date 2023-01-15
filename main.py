@@ -1,6 +1,5 @@
 # MYAP - Minimalistic Youtube Audio Player
 # Supports not only youtube
-#TODO: The thing with the playlists and bad files y'know
 import yt_dlp
 import os
 import pygame
@@ -9,22 +8,32 @@ import tomli
 import tomli_w
 import time
 import win32gui
+import requests
+import re
+import unicodedata
+import time
 import win32.lib.win32con as win32con
 from pypresence import Presence
 from mutagen.mp3 import MP3
 from tkinter import *
 from threading import Thread
 from pathlib import Path
-from time import sleep
 from datetime import datetime
+from time import sleep
 
+version = "v1.2"
+song_start_epoch = 0
+song_end_epoch = 0
 music_pos_seconds = 0
+music_length = 0
 paused = False
 inprogress = False
 repeat_track = False
 run_presence = False
 format = "mp3"
 title = "Nothing"
+author = "None"
+regex_title = ""
 cover_link = "https://user-images.githubusercontent.com/64737924/210854929-b4f80382-71a6-4b03-9d41-c88b31b75bb3.png"
 playlist_queue = []
 queue_pos = 0
@@ -41,9 +50,18 @@ if not hide_console:
 
 def presence_loop():
     global title
+    global author
+    global song_end_epoch
+    global song_start_epoch
     while run_presence:
-        RPC.update(details="Listening to", state=title, large_image=cover_link, large_text=title)
-        sleep(15)
+        if inprogress:
+            if not paused:
+                RPC.update(details=title, state=author, large_image=cover_link, large_text=title, start=int(song_start_epoch),end=int(song_end_epoch))
+            else:
+                RPC.update(details=title, state=author, large_image=cover_link, large_text=title)
+        else:
+            RPC.update(details="Listening to", state=title, large_image=cover_link, large_text="MYAP")
+        sleep(1)
 
 if is_rich_presence:
     RPC = Presence("1060563956806205491",pipe=0)
@@ -139,12 +157,18 @@ def check_music():
     root.after(100,check_music)
 
 def slider_seek(value):
+    global song_end_epoch
+    global song_start_epoch
     global music_pos_seconds
+    global music_length
     if pygame.mixer.music.get_busy():
         pygame.mixer.music.play(start=value)
         music_pos_seconds = value
         time_into.configure(text=get_formated_time(music_pos_seconds))
         slider.set(value)
+        song_start_epoch = time.time()
+        song_end_epoch = (song_start_epoch + music_length) - music_pos_seconds
+
 
 def slider_volume(value):
     global audio_loudness
@@ -163,7 +187,7 @@ def play():
     global inprogress
     inprogress = True
     root.title("Playing: " + title + " - MYAP")
-    pygame.mixer.music.load('./downloaded/'+title+' ['+ video_id +'].'+format)
+    pygame.mixer.music.load('./downloaded/'+regex_title+'['+ video_id +'].'+format)
     pygame.mixer.music.play()
     slider.set(0)
     p_u = Thread(target=p_updater)
@@ -179,10 +203,17 @@ def pre_play(link):
     global playlist_queue
     global queue_pos
     global cover_link
+    global regex_title
+    global author
+    global song_start_epoch
+    global song_end_epoch
+    global music_length
+    fnfe = False
     ydl_opts = {
         'format': 'm4a/bestaudio/best',
         'ignoreerrors': True,
         'extract_flat': True,
+        'restrictfilenames': True,
         'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': format,
@@ -212,42 +243,54 @@ def pre_play(link):
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(input, download=False)
                     title = ydl.sanitize_info(info)["title"]
+                    author = ydl.sanitize_info(info)["uploader"]
+                    regex_title = title
+                    regex_title = re.sub("[\U0000002A\U0000005C\U0000002F\U00000022\U0000003F\U0000007C\U00010000-\U0010FFFF]","_",regex_title)
+                    regex_title = re.sub("[:]+","_-",regex_title)
+                    regex_title = re.sub("/[<>:\/\\|?*]+/g","",regex_title)
+                    regex_title = re.sub("\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff]|[(]+|[)]+|[']+|[!]+|[?]+|[\U0000005B]+|[\U0000005D]+","",regex_title)
+                    regex_title = re.sub("[ ]+","_",regex_title)
+                    regex_title = unicodedata.normalize('NFKD', regex_title)
+                    regex_title = "".join([c for c in regex_title if not unicodedata.combining(c)]) 
+                    regex_title = regex_title + "-"
                     video_id = ydl.sanitize_info(info)["id"]
                     cover_link = "https://i.ytimg.com/vi/"+video_id+"/hq720.jpg"
-                    if not os.path.exists("downloaded/"+title+" ["+ video_id +"]."+format):
+                    if not os.path.exists("downloaded/"+regex_title+"["+ video_id +"]."+format):
                         root.title("Downloading: " + title + " - MYAP")
                         error_code = ydl.download(input)
                         try:
-                            os.replace(title+" ["+ video_id +"]."+format,"downloaded/"+title+" ["+ video_id +"]."+format)
-                        # Make replaceses for illegal characters for files
-                        # < (less than)
-                        # > (greater than)
-                        # : (colon - sometimes works, but is actually NTFS Alternate Data Streams)
-                        # " (double quote)
-                        # / (forward slash)
-                        # \ (backslash)
-                        # | (vertical bar or pipe)
-                        # ? (question mark)
-                        # * (asterisk)
+                            os.replace(regex_title+"["+ video_id +"]."+format,"downloaded/"+regex_title+"["+ video_id +"]."+format)
                         except FileNotFoundError:
+                            fnfe = True
                             for file in os.listdir("./"):
                                 if file.endswith(".mp3"):
-                                    os.rename(file,title.replace(":","").replace("|","")+" ["+ video_id +"]."+format)
-                                    os.replace(title+" ["+ video_id +"]."+format,"downloaded/"+title+" ["+ video_id +"]."+format)
+                                    os.remove(file)
+                            print("[MYAP] There was an error with " + regex_title + ". File probably has some unusual signs")
+                            title = "Nothing"
+                            cover_link = "https://user-images.githubusercontent.com/64737924/210854929-b4f80382-71a6-4b03-9d41-c88b31b75bb3.png"
+                            root.title("Playing: Nothing - MYAP")
+                            if len(playlist_queue) > 0:
+                                queue_pos += 1
+                                m_p = Thread(target=pre_play,args=(playlist_queue[queue_pos],))
+                                m_p.start()
                         else:
-                            all_files.append(title+" ["+ video_id +"]."+format)
+                            all_files.append(regex_title+"["+ video_id +"]."+format)
                             with open("files.toml", mode="wb") as fp:
                                 print(str(dict(files = all_files)))
                                 tomli_w.dump(dict(files = all_files), fp)
                     else:
                         print("[MYAP] File exists")
-                mf = MP3("downloaded/"+title+" ["+ video_id +"]."+format)
-                slider.configure(from_=0,to=mf.info.length,number_of_steps=mf.info.length*10)
-                play_button.configure(text="||")
-                time_total.configure(text=get_formated_time(mf.info.length))
-                p_a = Thread(target=play)
-                p_a.start()
-                print("[MYAP] Done processing url & audio file(s)")
+                if not fnfe:
+                    mf = MP3("downloaded/"+regex_title+"["+ video_id +"]."+format)
+                    music_length = mf.info.length
+                    song_start_epoch = time.time()
+                    song_end_epoch = song_start_epoch + mf.info.length
+                    slider.configure(from_=0,to=mf.info.length,number_of_steps=mf.info.length*10)
+                    play_button.configure(text="||")
+                    time_total.configure(text=get_formated_time(mf.info.length))
+                    p_a = Thread(target=play)
+                    p_a.start()
+                    print("[MYAP] Done processing url & audio file(s)")
             else:
                 ydl_opts = {
                     'ignoreerrors': True,
@@ -302,6 +345,8 @@ def set_repeat():
 def play_b():
     global paused
     global inprogress
+    global song_start_epoch
+    global song_end_epoch
     if inprogress:
         if not paused:
             paused = True
@@ -310,6 +355,8 @@ def play_b():
         else:
             paused = False
             play_button.configure(text="||")
+            song_start_epoch = time.time()
+            song_end_epoch = (song_start_epoch + music_length) - music_pos_seconds
             pygame.mixer.music.unpause()
             p_u = Thread(target=p_updater)
             p_u.start()
@@ -348,6 +395,27 @@ slider_v.place(relx=0.7,rely=0.6,anchor=CENTER)
 slider_v.set(audio_loudness)
 pygame.mixer.music.set_volume(audio_loudness)
 check_music()
+
+def new_version():
+    os.system("start https://github.com/PouekDEV/MYAP/releases/latest")
+    window.destroy()
+
+response = requests.get("https://api.github.com/repos/PouekDEV/MYAP/releases/latest")
+if response.json()["name"] != version:
+    print("[MYAP] A new version is available")
+    window = customtkinter.CTkToplevel()
+    window.title("A new version is available!")
+    window.resizable(0,0)
+    window.iconbitmap("icon.ico")
+    window.geometry("300x100")
+    info = customtkinter.CTkLabel(master=window, text="A new version is available!")
+    info.place(relx=0.5, rely=0.2, anchor=CENTER)
+    v_name = customtkinter.CTkLabel(master=window, text=response.json()["name"])
+    v_name.place(relx=0.5, rely=0.5, anchor=CENTER)
+    github = customtkinter.CTkButton(master=window,text="Download",command=new_version, width=60,height=20)
+    github.place(relx=0.5, rely=0.8,anchor=CENTER)
+else:
+    print("[MYAP] MYAP is up to date")
 
 def close_program():
     global run_presence
