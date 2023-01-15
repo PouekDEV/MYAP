@@ -22,7 +22,8 @@ The App itself
 
 Discord Rich Presence
 
-![image](https://user-images.githubusercontent.com/64737924/211200502-1994d550-de84-492c-8a35-120757ec90e9.png)
+![image](https://user-images.githubusercontent.com/64737924/212569442-7e128ba2-1bba-486f-b7aa-780ba17d3ddb.png)
+
 
 (If you don't like having your music displayed on Discord as your status change line "enable_rich_presence" in config.toml to "false")
 ```
