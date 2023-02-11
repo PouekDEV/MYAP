@@ -1,6 +1,8 @@
 enable_rich_presence = true
 show_console = false
 audio_loudness = 0.5
+check_for_updates = true
 delete_files_after = 10
+ffmpeg_location = ""
 appearance = "system"
 theme = "green"

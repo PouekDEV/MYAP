@@ -1,5 +1,6 @@
 # MYAP - Minimalistic Youtube Audio Player
 # Supports not only youtube
+# Add preconfigured ffmpeg
 import yt_dlp
 import os
 import pygame
@@ -21,7 +22,7 @@ from pathlib import Path
 from datetime import datetime
 from time import sleep
 
-version = "v1.2"
+version = "v1.2.1"
 song_start_epoch = 0
 song_end_epoch = 0
 music_pos_seconds = 0
@@ -43,6 +44,8 @@ files_stale_after = whole_config["delete_files_after"]
 all_files = tomli.loads(Path("files.toml").read_text(encoding="utf-8"))["files"]
 hide_console = whole_config["show_console"]
 audio_loudness = whole_config["audio_loudness"]
+check_for_updates = whole_config["check_for_updates"]
+ffmpeg_location = whole_config["ffmpeg_location"]
 
 if not hide_console:
     the_program_to_hide = win32gui.GetForegroundWindow()
@@ -64,11 +67,14 @@ def presence_loop():
         sleep(1)
 
 if is_rich_presence:
-    RPC = Presence("1060563956806205491",pipe=0)
-    RPC.connect()
-    run_presence = True
-    p_l = Thread(target=presence_loop)
-    p_l.start()
+    try:
+        RPC = Presence("1060563956806205491",pipe=0)
+        RPC.connect()
+        run_presence = True
+        p_l = Thread(target=presence_loop)
+        p_l.start()
+    except:
+        print("[MYAP] Discord not found")
 
 print("[MYAP] "+str(all_files))
 
@@ -111,6 +117,8 @@ def check_music():
     global playlist_queue
     global queue_pos
     global cover_link
+    global song_start_epoch
+    global song_end_epoch
     for event in pygame.event.get():
         if event.type == MUSIC_END:
             print("[MYAP] Playback stopped")
@@ -137,6 +145,8 @@ def check_music():
                 else:
                     p_a = Thread(target=play)
                     p_a.start()
+                    song_start_epoch = time.time()
+                    song_end_epoch = song_start_epoch + music_length
             else:
                 if len(playlist_queue) > 0:
                     queue_pos += 1
@@ -167,8 +177,7 @@ def slider_seek(value):
         time_into.configure(text=get_formated_time(music_pos_seconds))
         slider.set(value)
         song_start_epoch = time.time()
-        song_end_epoch = (song_start_epoch + music_length) - music_pos_seconds
-
+        song_end_epoch = song_start_epoch + (music_length - music_pos_seconds)
 
 def slider_volume(value):
     global audio_loudness
@@ -217,10 +226,13 @@ def pre_play(link):
         'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': format,
-        }]
+        }],
     }
+    if ffmpeg_location != "":
+        ydl_opts['ffmpeg_location'] = ffmpeg_location
     if link == " ":
         dialog = customtkinter.CTkInputDialog(text="Paste in url", title="MYAP")
+        dialog.iconbitmap("icon.ico")
         input = dialog.get_input()
     else:
         input = link
@@ -347,6 +359,8 @@ def play_b():
     global inprogress
     global song_start_epoch
     global song_end_epoch
+    global music_length
+    global music_pos_seconds
     if inprogress:
         if not paused:
             paused = True
@@ -356,7 +370,7 @@ def play_b():
             paused = False
             play_button.configure(text="||")
             song_start_epoch = time.time()
-            song_end_epoch = (song_start_epoch + music_length) - music_pos_seconds
+            song_end_epoch = (song_start_epoch + (music_length - music_pos_seconds))-2
             pygame.mixer.music.unpause()
             p_u = Thread(target=p_updater)
             p_u.start()
@@ -400,22 +414,23 @@ def new_version():
     os.system("start https://github.com/PouekDEV/MYAP/releases/latest")
     window.destroy()
 
-response = requests.get("https://api.github.com/repos/PouekDEV/MYAP/releases/latest")
-if response.json()["name"] != version:
-    print("[MYAP] A new version is available")
-    window = customtkinter.CTkToplevel()
-    window.title("A new version is available!")
-    window.resizable(0,0)
-    window.iconbitmap("icon.ico")
-    window.geometry("300x100")
-    info = customtkinter.CTkLabel(master=window, text="A new version is available!")
-    info.place(relx=0.5, rely=0.2, anchor=CENTER)
-    v_name = customtkinter.CTkLabel(master=window, text=response.json()["name"])
-    v_name.place(relx=0.5, rely=0.5, anchor=CENTER)
-    github = customtkinter.CTkButton(master=window,text="Download",command=new_version, width=60,height=20)
-    github.place(relx=0.5, rely=0.8,anchor=CENTER)
-else:
-    print("[MYAP] MYAP is up to date")
+if check_for_updates:
+    response = requests.get("https://api.github.com/repos/PouekDEV/MYAP/releases/latest")
+    if response.json()["name"] != version:
+        print("[MYAP] A new version is available")
+        window = customtkinter.CTkToplevel()
+        window.title("A new version is available!")
+        window.resizable(0,0)
+        window.iconbitmap("icon.ico")
+        window.geometry("300x100")
+        info = customtkinter.CTkLabel(master=window, text="A new version is available!")
+        info.place(relx=0.5, rely=0.2, anchor=CENTER)
+        v_name = customtkinter.CTkLabel(master=window, text=response.json()["name"])
+        v_name.place(relx=0.5, rely=0.5, anchor=CENTER)
+        github = customtkinter.CTkButton(master=window,text="Download",command=new_version, width=60,height=20)
+        github.place(relx=0.5, rely=0.8,anchor=CENTER)
+    else:
+        print("[MYAP] MYAP is up to date")
 
 def close_program():
     global run_presence
