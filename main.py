@@ -1,6 +1,5 @@
 # MYAP - Minimalistic Youtube Audio Player
 # Supports not only youtube
-# Add preconfigured ffmpeg
 import yt_dlp
 import os
 import pygame
