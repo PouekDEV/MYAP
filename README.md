@@ -1,4 +1,4 @@
-<img src="https://user-images.githubusercontent.com/64737924/210854929-b4f80382-71a6-4b03-9d41-c88b31b75bb3.png" width="256">
+<img src="https://user-images.githubusercontent.com/64737924/234092116-d079857b-37ab-4837-85c2-d3f27b6ea96b.png" width="256">
 
 # MYAP
 ![badge_downloads](https://img.shields.io/github/downloads/PouekDEV/MYAP/total?style=for-the-badge)
