@@ -2,7 +2,6 @@
 # Supports not only youtube
 import yt_dlp
 import os
-import sys
 import pygame
 import customtkinter
 import tomli
@@ -474,7 +473,6 @@ def close_program():
         RPC.clear()
         RPC.close()
         run_presence = False
-    sys.stdout.close()
     root.destroy()
 
 root.protocol("WM_DELETE_WINDOW", close_program)
