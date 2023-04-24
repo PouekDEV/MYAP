@@ -2,17 +2,16 @@
 # Supports not only youtube
 import yt_dlp
 import os
+import sys
 import pygame
 import customtkinter
 import tomli
 import tomli_w
 import time
-import win32gui
 import requests
 import re
 import unicodedata
 import time
-import win32.lib.win32con as win32con
 from pypresence import Presence
 from mutagen.mp3 import MP3
 from tkinter import *
@@ -20,8 +19,10 @@ from threading import Thread
 from pathlib import Path
 from datetime import datetime
 from time import sleep
-
-version = "v1.2.1"
+# Remove for possible future linux release
+import win32.lib.win32con as win32con
+import win32gui
+version = "v1.3"
 song_start_epoch = 0
 song_end_epoch = 0
 music_pos_seconds = 0
@@ -34,7 +35,7 @@ format = "mp3"
 title = "Nothing"
 author = "None"
 regex_title = ""
-cover_link = "https://user-images.githubusercontent.com/64737924/210854929-b4f80382-71a6-4b03-9d41-c88b31b75bb3.png"
+cover_link = "https://user-images.githubusercontent.com/64737924/234092116-d079857b-37ab-4837-85c2-d3f27b6ea96b.png"
 playlist_queue = []
 queue_pos = 0
 whole_config = tomli.loads(Path("config.toml").read_text(encoding="utf-8"))
@@ -162,7 +163,7 @@ def check_music():
                     slider.configure(from_=0, to=1, number_of_steps=1)
                     play_button.configure(text=">")
                     title = "Nothing"
-                    cover_link = "https://user-images.githubusercontent.com/64737924/210854929-b4f80382-71a6-4b03-9d41-c88b31b75bb3.png"
+                    cover_link = "https://user-images.githubusercontent.com/64737924/234092116-d079857b-37ab-4837-85c2-d3f27b6ea96b.png"
     root.after(100,check_music)
 
 def slider_seek(value):
@@ -203,6 +204,27 @@ def play():
     while pygame.mixer.music.get_busy():
         pygame.time.Clock().tick(10)
 
+downloading = False
+def progress(d):
+    global downloading
+    global progress_bar
+    global slider
+    if not downloading:
+        progress_bar = customtkinter.CTkProgressBar(master=root)
+        progress_bar.place(relx=0.7,rely=0.35,anchor=CENTER)
+        slider.place_forget()
+        downloading = True
+    if d["status"] == "finished":
+        downloading = False
+        progress_bar.place_forget()
+        slider.place(relx=0.7,rely=0.35,anchor=CENTER)
+    if d["status"] == "downloading":
+        p = d["_percent_str"]
+        p = p.replace("%","")
+        p = p.replace("\x1b[0;94m","")
+        p = p.replace("\x1b[0m","")
+        progress_bar.set(float(p)/100)
+
 def pre_play(link):
     global title
     global video_id
@@ -222,6 +244,8 @@ def pre_play(link):
         'ignoreerrors': True,
         'extract_flat': True,
         'restrictfilenames': True,
+        'progress_hooks': [progress],
+        'noplaylist': True,
         'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': format,
@@ -265,7 +289,12 @@ def pre_play(link):
                     regex_title = "".join([c for c in regex_title if not unicodedata.combining(c)]) 
                     regex_title = regex_title + "-"
                     video_id = ydl.sanitize_info(info)["id"]
-                    cover_link = "https://i.ytimg.com/vi/"+video_id+"/hq720.jpg"
+                    try:
+                        input.index("soundcloud")
+                    except ValueError:
+                        cover_link = "https://i.ytimg.com/vi/"+video_id+"/hq720.jpg"
+                    else:
+                        cover_link = "https://d21buns5ku92am.cloudfront.net/26628/images/419679-1x1_SoundCloudLogo_cloudmark-f5912b-medium-1645807040.jpg"
                     if not os.path.exists("downloaded/"+regex_title+"["+ video_id +"]."+format):
                         root.title("Downloading: " + title + " - MYAP")
                         error_code = ydl.download(input)
@@ -278,7 +307,7 @@ def pre_play(link):
                                     os.remove(file)
                             print("[MYAP] There was an error with " + regex_title + ". File probably has some unusual signs")
                             title = "Nothing"
-                            cover_link = "https://user-images.githubusercontent.com/64737924/210854929-b4f80382-71a6-4b03-9d41-c88b31b75bb3.png"
+                            cover_link = "https://user-images.githubusercontent.com/64737924/234092116-d079857b-37ab-4837-85c2-d3f27b6ea96b.png"
                             root.title("Playing: Nothing - MYAP")
                             if len(playlist_queue) > 0:
                                 queue_pos += 1
@@ -340,7 +369,7 @@ def stop_p():
     paused = False
     inprogress = False
     title = "Nothing"
-    cover_link = "https://user-images.githubusercontent.com/64737924/210854929-b4f80382-71a6-4b03-9d41-c88b31b75bb3.png"
+    cover_link = "https://user-images.githubusercontent.com/64737924/234092116-d079857b-37ab-4837-85c2-d3f27b6ea96b.png"
     music_pos_seconds = 0
     pygame.mixer.music.stop()
 
@@ -445,6 +474,7 @@ def close_program():
         RPC.clear()
         RPC.close()
         run_presence = False
+    sys.stdout.close()
     root.destroy()
 
 root.protocol("WM_DELETE_WINDOW", close_program)
