@@ -8,9 +8,8 @@ import tomli
 import tomli_w
 import time
 import requests
-import re
-import unicodedata
 import time
+import platform
 from pypresence import Presence
 from mutagen.mp3 import MP3
 from tkinter import *
@@ -18,10 +17,7 @@ from threading import Thread
 from pathlib import Path
 from datetime import datetime
 from time import sleep
-# Remove for possible future linux release
-import win32.lib.win32con as win32con
-import win32gui
-version = "v1.3"
+version = "v1.3.1"
 song_start_epoch = 0
 song_end_epoch = 0
 music_pos_seconds = 0
@@ -46,9 +42,12 @@ audio_loudness = whole_config["audio_loudness"]
 check_for_updates = whole_config["check_for_updates"]
 ffmpeg_location = whole_config["ffmpeg_location"]
 
-if not hide_console:
-    the_program_to_hide = win32gui.GetForegroundWindow()
-    win32gui.ShowWindow(the_program_to_hide , win32con.SW_HIDE)
+if platform.system() == "Windows":
+    import win32.lib.win32con as win32con
+    import win32gui
+    if not hide_console:
+        the_program_to_hide = win32gui.GetForegroundWindow()
+        win32gui.ShowWindow(the_program_to_hide , win32con.SW_HIDE)
 
 def presence_loop():
     global title
@@ -79,20 +78,24 @@ print("[MYAP] "+str(all_files))
 
 files_to_remove = []
 for file in range(len(all_files)):
-    last_access_time = os.path.getatime("downloaded/"+all_files[file])
-    today = time.localtime()
-    last_access_time = time.localtime(last_access_time)
-    today = time.strftime('%Y/%m/%d %H:%M:%S', today)
-    last_access_time = time.strftime('%Y/%m/%d %H:%M:%S', last_access_time)
-    today = datetime.strptime(today, "%Y/%m/%d %H:%M:%S")
-    last_access_time = datetime.strptime(last_access_time, "%Y/%m/%d %H:%M:%S")
-    print("[MYAP] "+str(last_access_time))
-    print("[MYAP] "+str(today))
-    difference = (today-last_access_time).days
-    print("[MYAP] Difference " + str(difference))
-    if difference >= files_stale_after:
-        os.remove("downloaded/"+all_files[file])
-        files_to_remove.append(all_files[file])
+    try:
+        last_access_time = os.path.getatime("downloaded/"+all_files[file])
+        today = time.localtime()
+        last_access_time = time.localtime(last_access_time)
+        today = time.strftime('%Y/%m/%d %H:%M:%S', today)
+        last_access_time = time.strftime('%Y/%m/%d %H:%M:%S', last_access_time)
+        today = datetime.strptime(today, "%Y/%m/%d %H:%M:%S")
+        last_access_time = datetime.strptime(last_access_time, "%Y/%m/%d %H:%M:%S")
+        print("[MYAP] "+str(last_access_time))
+        print("[MYAP] "+str(today))
+        difference = (today-last_access_time).days
+        print("[MYAP] Difference " + str(difference))
+        if difference >= files_stale_after:
+            os.remove("downloaded/"+all_files[file])
+            files_to_remove.append(all_files[file])
+    except FileNotFoundError:
+        print("[MYAP] File " + all_files[file] + " not found. Removing from the list")
+        all_files.remove(all_files[file-file])
 for file in range(len(files_to_remove)):
     all_files.remove(all_files[file-file])
 files_to_remove = []
@@ -195,7 +198,7 @@ def play():
     global inprogress
     inprogress = True
     root.title("Playing: " + title + " - MYAP")
-    pygame.mixer.music.load('./downloaded/'+regex_title+'['+ video_id +'].'+format)
+    pygame.mixer.music.load('./downloaded/'+regex_title)
     pygame.mixer.music.play()
     slider.set(0)
     p_u = Thread(target=p_updater)
@@ -245,10 +248,11 @@ def pre_play(link):
         'restrictfilenames': True,
         'progress_hooks': [progress],
         'noplaylist': True,
-        'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': format,
-        }],
+        'postprocessors': [
+            {'key': 'FFmpegExtractAudio','preferredcodec': format,},
+            {'key': 'SponsorBlock'},
+            {'key': 'ModifyChapters', 'remove_sponsor_segments': ['sponsor', 'selfpromo', 'interaction']}
+        ],
     }
     if ffmpeg_location != "":
         ydl_opts['ffmpeg_location'] = ffmpeg_location
@@ -276,60 +280,59 @@ def pre_play(link):
                 video_id = ""
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(input, download=False)
-                    title = ydl.sanitize_info(info)["title"]
-                    author = ydl.sanitize_info(info)["uploader"]
-                    regex_title = title
-                    regex_title = re.sub("[\U0000002A\U0000005C\U0000002F\U00000022\U0000003F\U0000007C\U00010000-\U0010FFFF]","_",regex_title)
-                    regex_title = re.sub("[:]+","_-",regex_title)
-                    regex_title = re.sub("/[<>:\/\\|?*]+/g","",regex_title)
-                    regex_title = re.sub("\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff]|[(]+|[)]+|[']+|[!]+|[?]+|[\U0000005B]+|[\U0000005D]+","",regex_title)
-                    regex_title = re.sub("[ ]+","_",regex_title)
-                    regex_title = unicodedata.normalize('NFKD', regex_title)
-                    regex_title = "".join([c for c in regex_title if not unicodedata.combining(c)]) 
-                    regex_title = regex_title + "-"
-                    video_id = ydl.sanitize_info(info)["id"]
                     try:
-                        input.index("soundcloud")
-                    except ValueError:
-                        cover_link = "https://i.ytimg.com/vi/"+video_id+"/hq720.jpg"
+                        title = ydl.sanitize_info(info)["title"]
+                        author = ydl.sanitize_info(info)["uploader"]
+                        regex_title = ydl.prepare_filename(info)
+                        regex_title = regex_title.replace(".m4a",".mp3")
+                        video_id = ydl.sanitize_info(info)["id"]
+                    except TypeError:
+                        print("[MYAP] There was an error with " + regex_title + ". The site may not be supported")
+                        title = "Nothing"
+                        root.title("Playing: Nothing - MYAP")
                     else:
-                        cover_link = "https://d21buns5ku92am.cloudfront.net/26628/images/419679-1x1_SoundCloudLogo_cloudmark-f5912b-medium-1645807040.jpg"
-                    if not os.path.exists("downloaded/"+regex_title+"["+ video_id +"]."+format):
-                        root.title("Downloading: " + title + " - MYAP")
-                        error_code = ydl.download(input)
                         try:
-                            os.replace(regex_title+"["+ video_id +"]."+format,"downloaded/"+regex_title+"["+ video_id +"]."+format)
-                        except FileNotFoundError:
-                            fnfe = True
-                            for file in os.listdir("./"):
-                                if file.endswith(".mp3"):
-                                    os.remove(file)
-                            print("[MYAP] There was an error with " + regex_title + ". File probably has some unusual signs")
-                            title = "Nothing"
-                            cover_link = "https://user-images.githubusercontent.com/64737924/234092116-d079857b-37ab-4837-85c2-d3f27b6ea96b.png"
-                            root.title("Playing: Nothing - MYAP")
-                            if len(playlist_queue) > 0:
-                                queue_pos += 1
-                                m_p = Thread(target=pre_play,args=(playlist_queue[queue_pos],))
-                                m_p.start()
+                            input.index("youtu")
+                        except ValueError:
+                            cover_link = "https://raw.githubusercontent.com/PouekDEV/MYAP/main/icon.png"
                         else:
-                            all_files.append(regex_title+"["+ video_id +"]."+format)
-                            with open("files.toml", mode="wb") as fp:
-                                print(str(dict(files = all_files)))
-                                tomli_w.dump(dict(files = all_files), fp)
-                    else:
-                        print("[MYAP] File exists")
-                if not fnfe:
-                    mf = MP3("downloaded/"+regex_title+"["+ video_id +"]."+format)
-                    music_length = mf.info.length
-                    song_start_epoch = time.time()
-                    song_end_epoch = song_start_epoch + mf.info.length
-                    slider.configure(from_=0,to=mf.info.length,number_of_steps=mf.info.length*10)
-                    play_button.configure(text="||")
-                    time_total.configure(text=get_formated_time(mf.info.length))
-                    p_a = Thread(target=play)
-                    p_a.start()
-                    print("[MYAP] Done processing url & audio file(s)")
+                            cover_link = "https://i.ytimg.com/vi/"+video_id+"/hq720.jpg"
+                        if not os.path.exists("downloaded/"+regex_title):
+                            root.title("Downloading: " + title + " - MYAP")
+                            ydl.download(input)
+                            try:
+                                os.replace(regex_title,"downloaded/"+regex_title)
+                            except FileNotFoundError:
+                                fnfe = True
+                                for file in os.listdir("./"):
+                                    if file.endswith(".mp3"):
+                                        os.remove(file)
+                                print("[MYAP] There was an error with " + regex_title + ". File probably has some unusual signs")
+                                title = "Nothing"
+                                cover_link = "https://user-images.githubusercontent.com/64737924/234092116-d079857b-37ab-4837-85c2-d3f27b6ea96b.png"
+                                root.title("Playing: Nothing - MYAP")
+                                if len(playlist_queue) > 0:
+                                    queue_pos += 1
+                                    m_p = Thread(target=pre_play,args=(playlist_queue[queue_pos],))
+                                    m_p.start()
+                            else:
+                                all_files.append(regex_title)
+                                with open("files.toml", mode="wb") as fp:
+                                    print(str(dict(files = all_files)))
+                                    tomli_w.dump(dict(files = all_files), fp)
+                        else:
+                            print("[MYAP] File exists")
+                        if not fnfe:
+                            mf = MP3("downloaded/"+regex_title)
+                            music_length = mf.info.length
+                            song_start_epoch = time.time()
+                            song_end_epoch = song_start_epoch + mf.info.length
+                            slider.configure(from_=0,to=mf.info.length,number_of_steps=mf.info.length*10)
+                            play_button.configure(text="||")
+                            time_total.configure(text=get_formated_time(mf.info.length))
+                            p_a = Thread(target=play)
+                            p_a.start()
+                            print("[MYAP] Done processing url & audio file(s)")
             else:
                 ydl_opts = {
                     'ignoreerrors': True,
